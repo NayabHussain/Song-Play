@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 import java.util.Scanner;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -27,19 +28,34 @@ public class SongPlayServiceImpl implements SongPlayService {
 		song3.setDurationInseconds(6);
 		song3.setSongName("anarkali disco chali");
 
+		Song song4 = new Song();
+		song4.setDurationInseconds(10);
+		song4.setSongName("Dhoom Machale");
+
+		Song song5 = new Song();
+		song5.setDurationInseconds(6);
+		song5.setSongName("Dilwale");
+
 		songList.add(song1);
 		songList.add(song2);
 		songList.add(song3);
+		songList.add(song4);
+		songList.add(song5);
 
 		AtomicInteger songCount = new AtomicInteger(0);
 
+		AtomicBoolean fromPrevious = new AtomicBoolean(false);
+
+		AtomicInteger nextSongNumberTobePlayed = new AtomicInteger(0);
+
 		setNumberToSong(songList);
 
-		songMenu(songList, songCount);
+		songMenu(songList, songCount, null, fromPrevious, nextSongNumberTobePlayed);
 
 	}
 
-	private void songMenu(List<Song> songList, AtomicInteger songCount) {
+	private void songMenu(List<Song> songList, AtomicInteger songCount, Song songTobePlayed, AtomicBoolean fromPrevious,
+			AtomicInteger nextSongNumberTobePlayed) {
 		System.out.println("Select Options");
 		System.out.println("1. Play All Songs");
 		System.out.println("2. Next Song");
@@ -56,12 +72,12 @@ public class SongPlayServiceImpl implements SongPlayService {
 			break;
 
 		case 2:
-			playNext(songList, songCount);
+			playNext(songList, songCount, fromPrevious, nextSongNumberTobePlayed);
 
 			break;
 
 		case 3:
-			playPrevious(songList, songCount);
+			playPrevious(songList, songCount, songTobePlayed, fromPrevious, nextSongNumberTobePlayed);
 
 			break;
 
@@ -73,34 +89,60 @@ public class SongPlayServiceImpl implements SongPlayService {
 		}
 	}
 
-	private void playPrevious(List<Song> songList, AtomicInteger songCount) {
-		// TODO Auto-generated method stub
+	private void playPrevious(List<Song> songList, AtomicInteger songCount, Song songTobePlayed, AtomicBoolean fromPrevious,
+			AtomicInteger nextSongNumberTobePlayed) {
+		try {
+			Song song = songList.stream().filter(s -> s.getSongNumber().equals(songTobePlayed.getPrevoiusSongNumber()))
+					.findAny().orElse(null);
+			fromPrevious.set(true);
+			nextSongNumberTobePlayed.set(songTobePlayed.getSongNumber());
+
+			playSong(song);
+			
+			songMenu(songList, songCount, songTobePlayed, fromPrevious, nextSongNumberTobePlayed);
+
+		} catch (Exception e) {
+			// TODO: handle exception
+		}
 
 	}
 
-	private void playNext(List<Song> songList, AtomicInteger songCount) {
+	private void playNext(List<Song> songList, AtomicInteger songCount, AtomicBoolean fromPrevious,
+			AtomicInteger nextSongNumberTobePlayed) {
 
 		int songNumber = generateRandomNumberFromList(songList);
 
 		if (songNumber != 0) {
 
 			Integer songNo = songNumber;
+			
+			
 
 			if (!songList.isEmpty()) {
-				Song songTobePlayed = songList.stream().filter(s -> s.getSongNumber().equals(songNo)).findAny().get();
-				playSong(songTobePlayed);
-				
-				songList.remove(songTobePlayed);
 
-				songMenu(songList, songCount);
+				Song previousSong = songList.stream().filter(s -> s.isPlayed()).findAny().orElse(null);
+
+				Song songTobePlayed = null;
+				if (!fromPrevious.get()) {
+					songTobePlayed = songList.stream().filter(s -> s.getSongNumber().equals(songNo)).findAny().get();
+				} else {
+					fromPrevious.set(false);
+					songTobePlayed = songList.stream().filter(s -> s.getSongNumber().equals(nextSongNumberTobePlayed.get()))
+							.findAny().get();
+				}
+				playSong(songTobePlayed);
+
+				if (previousSong != null) {
+					songList.stream().filter(s -> s.getSongNumber().equals(previousSong.getSongNumber())).findAny()
+							.get().setPlayed(false);
+					songTobePlayed.setPrevoiusSongNumber(previousSong.getSongNumber());
+					previousSong.setNextSongNumber(songTobePlayed.getSongNumber());
+
+				}
+
+				songMenu(songList, songCount, songTobePlayed, fromPrevious, nextSongNumberTobePlayed);
 
 			}
-		} else {
-
-			System.out.println("All songs are played");
-
-			System.err.println("*******-------------**********");
-
 		}
 
 	}
@@ -137,7 +179,7 @@ public class SongPlayServiceImpl implements SongPlayService {
 	private int generateRandomNumberFromList(List<Song> songList) {
 		List<Song> sortedList = new ArrayList<>();
 		if (!songList.isEmpty()) {
-			sortedList = songList.stream().sorted(Comparator.comparing(Song::getSongNumber))
+			sortedList = songList.stream().filter(s -> !s.isPlayed()).sorted(Comparator.comparing(Song::getSongNumber))
 					.collect(Collectors.toList());
 
 			int min = sortedList.get(0).getSongNumber();
@@ -181,6 +223,8 @@ public class SongPlayServiceImpl implements SongPlayService {
 			System.err.println("**************");
 			System.out.println(songTobePlayed.getSongName() + " Starts");
 			System.err.println("**************");
+
+			songTobePlayed.setPlayed(true);
 
 			int timerforEachSong = songTobePlayed.getDurationInseconds();
 
